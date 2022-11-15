@@ -16,8 +16,8 @@ package cmd
 
 import (
 	"sync"
-	"time"
 
+	"go.etcd.io/etcd/client/pkg/v3/flagutil"
 	"go.etcd.io/etcd/client/pkg/v3/transport"
 
 	"github.com/cheggaaa/pb/v3"
@@ -51,10 +51,12 @@ var (
 
 	user string
 
-	dialTimeout time.Duration
+	dialTimeout        flagutil.Duration
+	defaultDialTimeout = flagutil.ToDuration(0)
 
-	targetLeader     bool
-	autoSyncInterval time.Duration
+	targetLeader            bool
+	autoSyncInterval        flagutil.Duration
+	defaultAutoSyncInterval = flagutil.ToDuration(0)
 )
 
 func init() {
@@ -69,8 +71,15 @@ func init() {
 	RootCmd.PersistentFlags().StringVar(&tls.TrustedCAFile, "cacert", "", "verify certificates of HTTPS-enabled servers using this CA bundle")
 
 	RootCmd.PersistentFlags().StringVar(&user, "user", "", "provide username[:password] and prompt if password is not supplied.")
-	RootCmd.PersistentFlags().DurationVar(&dialTimeout, "dial-timeout", 0, "dial timeout for client connections")
 
 	RootCmd.PersistentFlags().BoolVar(&targetLeader, "target-leader", false, "connect only to the leader node")
-	RootCmd.PersistentFlags().DurationVar(&autoSyncInterval, "auto-sync-interval", time.Duration(0), "AutoSyncInterval is the interval to update endpoints with its latest members")
+
+	// flagutil.DurationFlag acts like a wrapper over pflag.(*FlagSet).DurationVar,
+	// which lets to input integer values for duration-based input flags.
+	// Input formats now: 2, 2ns, 2us (for µs), 2ms, 2s, 2m, 2h
+	// Default unit is seconds. i.e., --flagname=2 and --flagname=2s gives the same result.
+	RootCmd.PersistentFlags().AddFlag(flagutil.DurationFlag(&dialTimeout, "dial-timeout", defaultDialTimeout, "dial timeout for client connections", true))
+	RootCmd.PersistentFlags().AddFlag(flagutil.DurationFlag(&autoSyncInterval, "auto-sync-interval", defaultAutoSyncInterval,
+		"AutoSyncInterval is the interval to update endpoints with its latest members", true))
+
 }

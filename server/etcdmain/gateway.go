@@ -21,11 +21,13 @@ import (
 	"os"
 	"time"
 
+	"go.etcd.io/etcd/client/pkg/v3/flagutil"
 	"go.etcd.io/etcd/client/pkg/v3/logutil"
 	"go.etcd.io/etcd/server/v3/proxy/tcpproxy"
 
 	"github.com/spf13/cobra"
 	"go.uber.org/zap"
+	"go.uber.org/zap/zapcore"
 )
 
 var (
@@ -34,8 +36,11 @@ var (
 	gatewayDNSCluster            string
 	gatewayDNSClusterServiceName string
 	gatewayInsecureDiscovery     bool
-	gatewayRetryDelay            time.Duration
+	gatewayRetryDelay            flagutil.Duration
 	gatewayCA                    string
+	gatewayLogLevel              string
+
+	defaultGatewayRetryDelay = flagutil.ToDuration(time.Minute)
 )
 
 var (
@@ -73,10 +78,15 @@ func newGatewayStartCommand() *cobra.Command {
 	cmd.Flags().StringVar(&gatewayDNSClusterServiceName, "discovery-srv-name", "", "service name to query when using DNS discovery")
 	cmd.Flags().BoolVar(&gatewayInsecureDiscovery, "insecure-discovery", false, "accept insecure SRV records")
 	cmd.Flags().StringVar(&gatewayCA, "trusted-ca-file", "", "path to the client server TLS CA file for verifying the discovered endpoints when discovery-srv is provided.")
+	cmd.Flags().StringVar(&gatewayLogLevel, "log-level", logutil.DefaultLogLevel, "Configures log level. Only supports debug, info, warn, error, panic, or fatal")
 
 	cmd.Flags().StringSliceVar(&gatewayEndpoints, "endpoints", []string{"127.0.0.1:2379"}, "comma separated etcd cluster endpoints")
 
-	cmd.Flags().DurationVar(&gatewayRetryDelay, "retry-delay", time.Minute, "duration of delay before retrying failed endpoints")
+	// flagutil.DurationFlag acts like a wrapper over pflag.(*FlagSet).DurationVar,
+	// which lets to input integer values for duration-based input flags.
+	// Input formats now: 2, 2ns, 2us (for µs), 2ms, 2s, 2m, 2h
+	// Default unit is seconds. i.e., --flagname=2 and --flagname=2s gives the same result.
+	cmd.Flags().AddFlag(flagutil.DurationFlag(&gatewayRetryDelay, "retry-delay", defaultGatewayRetryDelay, "duration of delay before retrying failed endpoints", true))
 
 	return &cmd
 }
@@ -93,7 +103,13 @@ func stripSchema(eps []string) []string {
 }
 
 func startGateway(cmd *cobra.Command, args []string) {
-	lg, err := logutil.CreateDefaultZapLogger(zap.InfoLevel)
+	logLevel, err := zapcore.ParseLevel(gatewayLogLevel)
+	if err != nil {
+		fmt.Fprintln(os.Stderr, err)
+		os.Exit(1)
+	}
+
+	lg, err := logutil.CreateDefaultZapLogger(logLevel)
 	if err != nil {
 		fmt.Fprintln(os.Stderr, err)
 		os.Exit(1)
@@ -169,11 +185,20 @@ func startGateway(cmd *cobra.Command, args []string) {
 		os.Exit(1)
 	}
 
+	// TODO :: Bhargav :: For dev, remove after testing
+	// fmt.Printf("+++ gatewayRetryDelay=%v\n", gatewayRetryDelay)
+
+	// Only logging duration-based input flags for now for specific e2e test. Add other flags if required.
+	lg.Debug(
+		"input flag configs",
+		zap.Stringer("retry-delay", gatewayRetryDelay),
+	)
+
 	tp := tcpproxy.TCPProxy{
 		Logger:          lg,
 		Listener:        l,
 		Endpoints:       srvs.SRVs,
-		MonitorInterval: gatewayRetryDelay,
+		MonitorInterval: gatewayRetryDelay.Dur(),
 	}
 
 	// At this point, etcd gateway listener is initialized

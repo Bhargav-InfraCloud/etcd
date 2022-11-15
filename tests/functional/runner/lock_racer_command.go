@@ -60,7 +60,7 @@ func runRacerFunc(cmd *cobra.Command, args []string) {
 			err error
 		)
 
-		rcs[i].c = newClient(eps, dialTimeout)
+		rcs[i].c = newClient(eps, dialTimeout.Dur())
 
 		for {
 			s, err = concurrency.NewSession(rcs[i].c)

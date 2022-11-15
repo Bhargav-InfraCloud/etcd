@@ -23,6 +23,8 @@ import (
 	"time"
 
 	"github.com/spf13/cobra"
+
+	"go.etcd.io/etcd/client/pkg/v3/flagutil"
 )
 
 var (
@@ -47,12 +49,22 @@ var (
 	}
 )
 
-var flockTimeout time.Duration
-var iterateBucketLimit uint64
-var iterateBucketDecode bool
+var (
+	flockTimeout        flagutil.Duration
+	defaultFlockTimeout = flagutil.ToDuration(10 * time.Second)
+
+	iterateBucketLimit  uint64
+	iterateBucketDecode bool
+)
 
 func init() {
-	rootCommand.PersistentFlags().DurationVar(&flockTimeout, "timeout", 10*time.Second, "time to wait to obtain a file lock on db file, 0 to block indefinitely")
+	// flagutil.DurationFlag acts like a wrapper over pflag.(*FlagSet).DurationVar,
+	// which lets to input integer values for duration-based input flags.
+	// Input formats now: 2, 2ns, 2us (for µs), 2ms, 2s, 2m, 2h
+	// Default unit is seconds. i.e., --flagname=2 and --flagname=2s gives the same result.
+	rootCommand.PersistentFlags().AddFlag(flagutil.DurationFlag(&flockTimeout, "timeout", defaultFlockTimeout,
+		"time to wait to obtain a file lock on db file, 0 to block indefinitely", true))
+
 	iterateBucketCommand.PersistentFlags().Uint64Var(&iterateBucketLimit, "limit", 0, "max number of key-value pairs to iterate (0< to iterate all)")
 	iterateBucketCommand.PersistentFlags().BoolVar(&iterateBucketDecode, "decode", false, "true to decode Protocol Buffer encoded data")
 
@@ -69,6 +81,8 @@ func main() {
 }
 
 func listBucketCommandFunc(cmd *cobra.Command, args []string) {
+	// TODO :: Bhargav :: For dev, remove after testing
+	// fmt.Printf("+++ flockTimeout=%v\n", flockTimeout)
 	if len(args) < 1 {
 		log.Fatalf("Must provide at least 1 argument (got %v)", args)
 	}
@@ -90,6 +104,8 @@ func listBucketCommandFunc(cmd *cobra.Command, args []string) {
 }
 
 func iterateBucketCommandFunc(cmd *cobra.Command, args []string) {
+	// TODO :: Bhargav :: For dev, remove after testing
+	// fmt.Printf("+++ flockTimeout=%v\n", flockTimeout)
 	if len(args) != 2 {
 		log.Fatalf("Must provide 2 arguments (got %v)", args)
 	}

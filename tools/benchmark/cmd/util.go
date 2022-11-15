@@ -88,15 +88,19 @@ func getUsernamePassword(usernameFlag string) (string, string, error) {
 }
 
 func mustCreateConn() *clientv3.Client {
+	// TODO :: Bhargav :: For dev, remove after testing
+	// fmt.Printf("+++ autoSyncInterval=%v\n", autoSyncInterval)
+	// fmt.Printf("+++ dialTimeout=%v\n", dialTimeout)
+
 	connEndpoints := leaderEps
 	if len(connEndpoints) == 0 {
 		connEndpoints = []string{endpoints[dialTotal%len(endpoints)]}
 		dialTotal++
 	}
 	cfg := clientv3.Config{
-		AutoSyncInterval: autoSyncInterval,
+		AutoSyncInterval: autoSyncInterval.Dur(),
 		Endpoints:        connEndpoints,
-		DialTimeout:      dialTimeout,
+		DialTimeout:      dialTimeout.Dur(),
 	}
 	if !tls.Empty() || tls.TrustedCAFile != "" {
 		cfgtls, err := tls.ClientConfig()

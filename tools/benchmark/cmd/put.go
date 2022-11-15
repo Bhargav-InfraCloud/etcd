@@ -24,6 +24,7 @@ import (
 	"strings"
 	"time"
 
+	"go.etcd.io/etcd/client/pkg/v3/flagutil"
 	v3 "go.etcd.io/etcd/client/v3"
 	"go.etcd.io/etcd/pkg/v3/report"
 
@@ -51,8 +52,9 @@ var (
 	keySpaceSize int
 	seqKeys      bool
 
-	compactInterval   time.Duration
-	compactIndexDelta int64
+	compactInterval        flagutil.Duration
+	defaultCompactInterval = flagutil.ToDuration(0)
+	compactIndexDelta      int64
 
 	checkHashkv bool
 )
@@ -66,9 +68,15 @@ func init() {
 	putCmd.Flags().IntVar(&putTotal, "total", 10000, "Total number of put requests")
 	putCmd.Flags().IntVar(&keySpaceSize, "key-space-size", 1, "Maximum possible keys")
 	putCmd.Flags().BoolVar(&seqKeys, "sequential-keys", false, "Use sequential keys")
-	putCmd.Flags().DurationVar(&compactInterval, "compact-interval", 0, `Interval to compact database (do not duplicate this with etcd's 'auto-compaction-retention' flag) (e.g. --compact-interval=5m compacts every 5-minute)`)
 	putCmd.Flags().Int64Var(&compactIndexDelta, "compact-index-delta", 1000, "Delta between current revision and compact revision (e.g. current revision 10000, compact at 9000)")
 	putCmd.Flags().BoolVar(&checkHashkv, "check-hashkv", false, "'true' to check hashkv")
+
+	// flagutil.DurationFlag acts like a wrapper over pflag.(*FlagSet).DurationVar,
+	// which lets to input integer values for duration-based input flags.
+	// Input formats now: 2, 2ns, 2us (for µs), 2ms, 2s, 2m, 2h
+	// Default unit is seconds. i.e., --flagname=2 and --flagname=2s gives the same result.
+	putCmd.Flags().AddFlag(flagutil.DurationFlag(&compactInterval, "compact-interval", defaultCompactInterval,
+		`Interval to compact database (do not duplicate this with etcd's 'auto-compaction-retention' flag) (e.g. --compact-interval=5m compacts every 5-minute)`, true))
 }
 
 func putFunc(cmd *cobra.Command, args []string) {
@@ -116,10 +124,13 @@ func putFunc(cmd *cobra.Command, args []string) {
 		close(requests)
 	}()
 
-	if compactInterval > 0 {
+	// TODO :: Bhargav :: For dev, remove after testing
+	// fmt.Printf("+++ compactInterval=%v\n", compactInterval)
+
+	if compactInterval.Dur() > 0 {
 		go func() {
 			for {
-				time.Sleep(compactInterval)
+				time.Sleep(compactInterval.Dur())
 				compactKV(clients)
 			}
 		}()

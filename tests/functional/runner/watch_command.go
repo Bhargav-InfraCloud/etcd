@@ -22,7 +22,8 @@ import (
 	"sync"
 	"time"
 
-	"go.etcd.io/etcd/client/v3"
+	"go.etcd.io/etcd/client/pkg/v3/flagutil"
+	clientv3 "go.etcd.io/etcd/client/v3"
 	"go.etcd.io/etcd/pkg/v3/stringutil"
 
 	"github.com/spf13/cobra"
@@ -30,11 +31,13 @@ import (
 )
 
 var (
-	runningTime    time.Duration // time for which operation should be performed
-	noOfPrefixes   int           // total number of prefixes which will be watched upon
-	watchPerPrefix int           // number of watchers per prefix
-	watchPrefix    string        // prefix append to keys in watcher
-	totalKeys      int           // total number of keys for operation
+	runningTime    flagutil.Duration // time for which operation should be performed
+	noOfPrefixes   int               // total number of prefixes which will be watched upon
+	watchPerPrefix int               // number of watchers per prefix
+	watchPrefix    string            // prefix append to keys in watcher
+	totalKeys      int               // total number of keys for operation
+
+	defaultRunningTime = flagutil.ToDuration(60)
 )
 
 // NewWatchCommand returns the cobra command for "watcher runner".
@@ -44,11 +47,17 @@ func NewWatchCommand() *cobra.Command {
 		Short: "Performs watch operation",
 		Run:   runWatcherFunc,
 	}
-	cmd.Flags().DurationVar(&runningTime, "running-time", 60, "number of seconds to run")
+
 	cmd.Flags().StringVar(&watchPrefix, "prefix", "", "the prefix to append on all keys")
 	cmd.Flags().IntVar(&noOfPrefixes, "total-prefixes", 10, "total no of prefixes to use")
 	cmd.Flags().IntVar(&watchPerPrefix, "watch-per-prefix", 10, "number of watchers per prefix")
 	cmd.Flags().IntVar(&totalKeys, "total-keys", 1000, "total number of keys to watch")
+
+	// flagutil.DurationFlag acts like a wrapper over pflag.(*FlagSet).DurationVar,
+	// which lets to input integer values for duration-based input flags.
+	// Input formats now: 2, 2ns, 2us (for µs), 2ms, 2s, 2m, 2h
+	// Default unit is seconds. i.e., --flagname=2 and --flagname=2s gives the same result.
+	cmd.Flags().AddFlag(flagutil.DurationFlag(&runningTime, "running-time", defaultRunningTime, "number of seconds to run", true))
 
 	return cmd
 }
@@ -81,7 +90,7 @@ func performWatchOnPrefixes(ctx context.Context, cmd *cobra.Command, round int) 
 		err      error
 	)
 
-	client := newClient(eps, dialTimeout)
+	client := newClient(eps, dialTimeout.Dur())
 	defer client.Close()
 
 	gr, err = getKey(ctx, client, "non-existent")
@@ -90,7 +99,7 @@ func performWatchOnPrefixes(ctx context.Context, cmd *cobra.Command, round int) 
 	}
 	revision = gr.Header.Revision
 
-	ctxt, cancel := context.WithDeadline(ctx, time.Now().Add(runningTime*time.Second))
+	ctxt, cancel := context.WithDeadline(ctx, time.Now().Add(runningTime.Dur()*time.Second))
 	defer cancel()
 
 	// generate and put keys in cluster
@@ -117,7 +126,7 @@ func performWatchOnPrefixes(ctx context.Context, cmd *cobra.Command, round int) 
 
 	for _, prefix := range prefixes {
 		for j := 0; j < watchPerPrefix; j++ {
-			rc := newClient(eps, dialTimeout)
+			rc := newClient(eps, dialTimeout.Dur())
 			rcs = append(rcs, rc)
 
 			wprefix := watchPrefix + "-" + roundPrefix + "-" + prefix

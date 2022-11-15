@@ -23,6 +23,7 @@ import (
 	"runtime"
 
 	"go.etcd.io/etcd/api/v3/version"
+	"go.etcd.io/etcd/client/pkg/v3/flagutil"
 	"go.etcd.io/etcd/client/pkg/v3/logutil"
 	"go.etcd.io/etcd/pkg/v3/flags"
 	cconfig "go.etcd.io/etcd/server/v3/config"
@@ -36,6 +37,9 @@ import (
 var (
 	fallbackFlagExit  = "exit"
 	fallbackFlagProxy = "proxy"
+
+	defaultConnReadTimeout  = rafthttp.DefaultConnReadTimeout
+	defaultConnWriteTimeout = rafthttp.DefaultConnWriteTimeout
 
 	ignored = []string{
 		"cluster-active-size",
@@ -128,21 +132,32 @@ func newConfig() *config {
 	fs.BoolVar(&cfg.ec.InitialElectionTickAdvance, "initial-election-tick-advance", cfg.ec.InitialElectionTickAdvance, "Whether to fast-forward initial election ticks on boot for faster election.")
 	fs.Int64Var(&cfg.ec.QuotaBackendBytes, "quota-backend-bytes", cfg.ec.QuotaBackendBytes, "Raise alarms when backend size exceeds the given quota. 0 means use the default quota.")
 	fs.StringVar(&cfg.ec.BackendFreelistType, "backend-bbolt-freelist-type", cfg.ec.BackendFreelistType, "BackendFreelistType specifies the type of freelist that boltdb backend uses(array and map are supported types)")
-	fs.DurationVar(&cfg.ec.BackendBatchInterval, "backend-batch-interval", cfg.ec.BackendBatchInterval, "BackendBatchInterval is the maximum time before commit the backend transaction.")
 	fs.IntVar(&cfg.ec.BackendBatchLimit, "backend-batch-limit", cfg.ec.BackendBatchLimit, "BackendBatchLimit is the maximum operations before commit the backend transaction.")
 	fs.UintVar(&cfg.ec.MaxTxnOps, "max-txn-ops", cfg.ec.MaxTxnOps, "Maximum number of operations permitted in a transaction.")
 	fs.UintVar(&cfg.ec.MaxRequestBytes, "max-request-bytes", cfg.ec.MaxRequestBytes, "Maximum client request size in bytes the server will accept.")
-	fs.DurationVar(&cfg.ec.GRPCKeepAliveMinTime, "grpc-keepalive-min-time", cfg.ec.GRPCKeepAliveMinTime, "Minimum interval duration that a client should wait before pinging server.")
-	fs.DurationVar(&cfg.ec.GRPCKeepAliveInterval, "grpc-keepalive-interval", cfg.ec.GRPCKeepAliveInterval, "Frequency duration of server-to-client ping to check if a connection is alive (0 to disable).")
-	fs.DurationVar(&cfg.ec.GRPCKeepAliveTimeout, "grpc-keepalive-timeout", cfg.ec.GRPCKeepAliveTimeout, "Additional duration of wait before closing a non-responsive connection (0 to disable).")
 	fs.BoolVar(&cfg.ec.SocketOpts.ReusePort, "socket-reuse-port", cfg.ec.SocketOpts.ReusePort, "Enable to set socket option SO_REUSEPORT on listeners allowing rebinding of a port already in use.")
 	fs.BoolVar(&cfg.ec.SocketOpts.ReuseAddress, "socket-reuse-address", cfg.ec.SocketOpts.ReuseAddress, "Enable to set socket option SO_REUSEADDR on listeners allowing binding to an address in `TIME_WAIT` state.")
 
 	fs.Var(flags.NewUint32Value(cfg.ec.MaxConcurrentStreams), "max-concurrent-streams", "Maximum concurrent streams that each client can open at a time.")
 
+	// flagutil.Duration acts like a wrapper over flag.(*FlagSet).DurationVar,
+	// which lets to input integer values for duration-based input flags.
+	// Input formats now: 2, 2ns, 2us (for µs), 2ms, 2s, 2m, 2h
+	// Default unit is seconds. i.e., --flagname=2 and --flagname=2s gives the same result.
+	fs.Var(flagutil.NewDuration(&cfg.ec.BackendBatchInterval, nil), "backend-batch-interval",
+		flagutil.AddDefaultUnitsDesc("BackendBatchInterval is the maximum time before commit the backend transaction."))
+	fs.Var(flagutil.NewDuration(&cfg.ec.GRPCKeepAliveMinTime, nil), "grpc-keepalive-min-time",
+		flagutil.AddDefaultUnitsDesc("Minimum interval duration that a client should wait before pinging server."))
+	fs.Var(flagutil.NewDuration(&cfg.ec.GRPCKeepAliveInterval, nil), "grpc-keepalive-interval",
+		flagutil.AddDefaultUnitsDesc("Frequency duration of server-to-client ping to check if a connection is alive (0 to disable)."))
+	fs.Var(flagutil.NewDuration(&cfg.ec.GRPCKeepAliveTimeout, nil), "grpc-keepalive-timeout",
+		flagutil.AddDefaultUnitsDesc("Additional duration of wait before closing a non-responsive connection (0 to disable)."))
+
 	// raft connection timeouts
-	fs.DurationVar(&rafthttp.ConnReadTimeout, "raft-read-timeout", rafthttp.DefaultConnReadTimeout, "Read timeout set on each rafthttp connection")
-	fs.DurationVar(&rafthttp.ConnWriteTimeout, "raft-write-timeout", rafthttp.DefaultConnWriteTimeout, "Write timeout set on each rafthttp connection")
+	fs.Var(flagutil.NewDuration(&rafthttp.ConnReadTimeout, &defaultConnReadTimeout), "raft-read-timeout",
+		flagutil.AddDefaultUnitsDesc("Read timeout set on each rafthttp connection"))
+	fs.Var(flagutil.NewDuration(&rafthttp.ConnWriteTimeout, &defaultConnWriteTimeout), "raft-write-timeout",
+		flagutil.AddDefaultUnitsDesc("Write timeout set on each rafthttp connection"))
 
 	// clustering
 	fs.Var(
@@ -165,10 +180,14 @@ func newConfig() *config {
 		"V3 discovery: List of gRPC endpoints of the discovery service.",
 	)
 	fs.StringVar(&cfg.ec.DiscoveryCfg.Token, "discovery-token", "", "V3 discovery: discovery token for the etcd cluster to be bootstrapped.")
-	fs.DurationVar(&cfg.ec.DiscoveryCfg.DialTimeout, "discovery-dial-timeout", cfg.ec.DiscoveryCfg.DialTimeout, "V3 discovery: dial timeout for client connections.")
-	fs.DurationVar(&cfg.ec.DiscoveryCfg.RequestTimeout, "discovery-request-timeout", cfg.ec.DiscoveryCfg.RequestTimeout, "V3 discovery: timeout for discovery requests (excluding dial timeout).")
-	fs.DurationVar(&cfg.ec.DiscoveryCfg.KeepAliveTime, "discovery-keepalive-time", cfg.ec.DiscoveryCfg.KeepAliveTime, "V3 discovery: keepalive time for client connections.")
-	fs.DurationVar(&cfg.ec.DiscoveryCfg.KeepAliveTimeout, "discovery-keepalive-timeout", cfg.ec.DiscoveryCfg.KeepAliveTimeout, "V3 discovery: keepalive timeout for client connections.")
+	fs.Var(flagutil.NewDuration(&cfg.ec.DiscoveryCfg.DialTimeout, nil), "discovery-dial-timeout",
+		flagutil.AddDefaultUnitsDesc("V3 discovery: dial timeout for client connections."))
+	fs.Var(flagutil.NewDuration(&cfg.ec.DiscoveryCfg.RequestTimeout, nil), "discovery-request-timeout",
+		flagutil.AddDefaultUnitsDesc("V3 discovery: timeout for discovery requests (excluding dial timeout)."))
+	fs.Var(flagutil.NewDuration(&cfg.ec.DiscoveryCfg.KeepAliveTime, nil), "discovery-keepalive-time",
+		flagutil.AddDefaultUnitsDesc("V3 discovery: keepalive time for client connections."))
+	fs.Var(flagutil.NewDuration(&cfg.ec.DiscoveryCfg.KeepAliveTimeout, nil), "discovery-keepalive-timeout",
+		flagutil.AddDefaultUnitsDesc("V3 discovery: keepalive timeout for client connections."))
 	fs.BoolVar(&cfg.ec.DiscoveryCfg.Secure.InsecureTransport, "discovery-insecure-transport", true, "V3 discovery: disable transport security for client connections.")
 	fs.BoolVar(&cfg.ec.DiscoveryCfg.Secure.InsecureSkipVerify, "discovery-insecure-skip-tls-verify", false, "V3 discovery: skip server certificate verification (CAUTION: this option should be enabled only for testing purposes).")
 	fs.StringVar(&cfg.ec.DiscoveryCfg.Secure.Cert, "discovery-cert", "", "V3 discovery: identify secure client using this TLS certificate file.")
@@ -258,24 +277,32 @@ func newConfig() *config {
 
 	// experimental
 	fs.BoolVar(&cfg.ec.ExperimentalInitialCorruptCheck, "experimental-initial-corrupt-check", cfg.ec.ExperimentalInitialCorruptCheck, "Enable to check data corruption before serving any client/peer traffic.")
-	fs.DurationVar(&cfg.ec.ExperimentalCorruptCheckTime, "experimental-corrupt-check-time", cfg.ec.ExperimentalCorruptCheckTime, "Duration of time between cluster corruption check passes.")
+	fs.Var(flagutil.NewDuration(&cfg.ec.ExperimentalCorruptCheckTime, nil), "experimental-corrupt-check-time",
+		flagutil.AddDefaultUnitsDesc("Duration of time between cluster corruption check passes."))
 	fs.BoolVar(&cfg.ec.ExperimentalCompactHashCheckEnabled, "experimental-compact-hash-check-enabled", cfg.ec.ExperimentalCompactHashCheckEnabled, "Enable leader to periodically check followers compaction hashes.")
-	fs.DurationVar(&cfg.ec.ExperimentalCompactHashCheckTime, "experimental-compact-hash-check-time", cfg.ec.ExperimentalCompactHashCheckTime, "Duration of time between leader checks followers compaction hashes.")
+	fs.Var(flagutil.NewDuration(&cfg.ec.ExperimentalCompactHashCheckTime, nil), "experimental-compact-hash-check-time",
+		flagutil.AddDefaultUnitsDesc("Duration of time between leader checks followers compaction hashes."))
 
 	fs.BoolVar(&cfg.ec.ExperimentalEnableLeaseCheckpoint, "experimental-enable-lease-checkpoint", false, "Enable leader to send regular checkpoints to other members to prevent reset of remaining TTL on leader change.")
 	// TODO: delete in v3.7
 	fs.BoolVar(&cfg.ec.ExperimentalEnableLeaseCheckpointPersist, "experimental-enable-lease-checkpoint-persist", false, "Enable persisting remainingTTL to prevent indefinite auto-renewal of long lived leases. Always enabled in v3.6. Should be used to ensure smooth upgrade from v3.5 clusters with this feature enabled. Requires experimental-enable-lease-checkpoint to be enabled.")
 	fs.IntVar(&cfg.ec.ExperimentalCompactionBatchLimit, "experimental-compaction-batch-limit", cfg.ec.ExperimentalCompactionBatchLimit, "Sets the maximum revisions deleted in each compaction batch.")
-	fs.DurationVar(&cfg.ec.ExperimentalCompactionSleepInterval, "experimental-compaction-sleep-interval", cfg.ec.ExperimentalCompactionSleepInterval, "Sets the sleep interval between each compaction batch.")
-	fs.DurationVar(&cfg.ec.ExperimentalWatchProgressNotifyInterval, "experimental-watch-progress-notify-interval", cfg.ec.ExperimentalWatchProgressNotifyInterval, "Duration of periodic watch progress notifications.")
-	fs.DurationVar(&cfg.ec.ExperimentalDowngradeCheckTime, "experimental-downgrade-check-time", cfg.ec.ExperimentalDowngradeCheckTime, "Duration of time between two downgrade status check.")
-	fs.DurationVar(&cfg.ec.ExperimentalWarningApplyDuration, "experimental-warning-apply-duration", cfg.ec.ExperimentalWarningApplyDuration, "Time duration after which a warning is generated if request takes more time.")
-	fs.DurationVar(&cfg.ec.ExperimentalWarningUnaryRequestDuration, "experimental-warning-unary-request-duration", cfg.ec.ExperimentalWarningUnaryRequestDuration, "Time duration after which a warning is generated if a unary request takes more time.")
+	fs.Var(flagutil.NewDuration(&cfg.ec.ExperimentalCompactionSleepInterval, nil), "experimental-compaction-sleep-interval",
+		flagutil.AddDefaultUnitsDesc("Sets the sleep interval between each compaction batch."))
+	fs.Var(flagutil.NewDuration(&cfg.ec.ExperimentalWatchProgressNotifyInterval, nil), "experimental-watch-progress-notify-interval",
+		flagutil.AddDefaultUnitsDesc("Duration of periodic watch progress notifications."))
+	fs.Var(flagutil.NewDuration(&cfg.ec.ExperimentalDowngradeCheckTime, nil), "experimental-downgrade-check-time",
+		flagutil.AddDefaultUnitsDesc("Duration of time between two downgrade status check."))
+	fs.Var(flagutil.NewDuration(&cfg.ec.ExperimentalWarningApplyDuration, nil), "experimental-warning-apply-duration",
+		flagutil.AddDefaultUnitsDesc("Time duration after which a warning is generated if request takes more time."))
+	fs.Var(flagutil.NewDuration(&cfg.ec.ExperimentalWarningUnaryRequestDuration, nil), "experimental-warning-unary-request-duration",
+		flagutil.AddDefaultUnitsDesc("Time duration after which a warning is generated if a unary request takes more time."))
 	fs.BoolVar(&cfg.ec.ExperimentalMemoryMlock, "experimental-memory-mlock", cfg.ec.ExperimentalMemoryMlock, "Enable to enforce etcd pages (in particular bbolt) to stay in RAM.")
 	fs.BoolVar(&cfg.ec.ExperimentalTxnModeWriteWithSharedBuffer, "experimental-txn-mode-write-with-shared-buffer", true, "Enable the write transaction to use a shared buffer in its readonly check operations.")
 	fs.UintVar(&cfg.ec.ExperimentalBootstrapDefragThresholdMegabytes, "experimental-bootstrap-defrag-threshold-megabytes", 0, "Enable the defrag during etcd server bootstrap on condition that it will free at least the provided threshold of disk space. Needs to be set to non-zero value to take effect.")
 	fs.IntVar(&cfg.ec.ExperimentalMaxLearners, "experimental-max-learners", membership.DefaultMaxLearners, "Sets the maximum number of learners that can be available in the cluster membership.")
-	fs.DurationVar(&cfg.ec.ExperimentalWaitClusterReadyTimeout, "experimental-wait-cluster-ready-timeout", cfg.ec.ExperimentalWaitClusterReadyTimeout, "Maximum duration to wait for the cluster to be ready.")
+	fs.Var(flagutil.NewDuration(&cfg.ec.ExperimentalWaitClusterReadyTimeout, nil), "experimental-wait-cluster-ready-timeout",
+		flagutil.AddDefaultUnitsDesc("Maximum duration to wait for the cluster to be ready."))
 
 	// unsafe
 	fs.BoolVar(&cfg.ec.UnsafeNoFsync, "unsafe-no-fsync", false, "Disables fsync, unsafe, will cause data loss.")
@@ -333,6 +360,31 @@ func (cfg *config) parse(arguments []string) error {
 
 	if cfg.ec.V2Deprecation == "" {
 		cfg.ec.V2Deprecation = cconfig.V2_DEPR_DEFAULT
+	}
+
+	if lg := cfg.ec.GetLogger(); lg != nil {
+		// Only logging duration-based input flags for now for specific e2e test. Add other flags if required.
+		lg.Debug(
+			"input flag configs",
+			zap.Stringer("backend-batch-interval", cfg.ec.BackendBatchInterval),
+			zap.Stringer("grpc-keepalive-min-time", cfg.ec.GRPCKeepAliveMinTime),
+			zap.Stringer("grpc-keepalive-interval", cfg.ec.GRPCKeepAliveInterval),
+			zap.Stringer("grpc-keepalive-timeout", cfg.ec.GRPCKeepAliveTimeout),
+			zap.Stringer("raft-read-timeout", rafthttp.ConnReadTimeout),
+			zap.Stringer("raft-write-timeout", rafthttp.ConnWriteTimeout),
+			zap.Stringer("discovery-dial-timeout", cfg.ec.DiscoveryCfg.DialTimeout),
+			zap.Stringer("discovery-request-timeout", cfg.ec.DiscoveryCfg.RequestTimeout),
+			zap.Stringer("discovery-keepalive-time", cfg.ec.DiscoveryCfg.KeepAliveTime),
+			zap.Stringer("discovery-keepalive-timeout", cfg.ec.DiscoveryCfg.KeepAliveTimeout),
+			zap.Stringer("experimental-corrupt-check-time", cfg.ec.ExperimentalCorruptCheckTime),
+			zap.Stringer("experimental-compact-hash-check-time", cfg.ec.ExperimentalCompactHashCheckTime),
+			zap.Stringer("experimental-compaction-sleep-interval", cfg.ec.ExperimentalCompactionSleepInterval),
+			zap.Stringer("experimental-watch-progress-notify-interval", cfg.ec.ExperimentalWatchProgressNotifyInterval),
+			zap.Stringer("experimental-downgrade-check-time", cfg.ec.ExperimentalDowngradeCheckTime),
+			zap.Stringer("experimental-warning-apply-duration", cfg.ec.ExperimentalWarningApplyDuration),
+			zap.Stringer("experimental-warning-unary-request-duration", cfg.ec.ExperimentalWarningUnaryRequestDuration),
+			zap.Stringer("experimental-wait-cluster-ready-timeout", cfg.ec.ExperimentalWaitClusterReadyTimeout),
+		)
 	}
 
 	// now logger is set up

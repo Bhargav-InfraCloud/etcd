@@ -48,7 +48,7 @@ func runLeaseRenewerFunc(cmd *cobra.Command, args []string) {
 	}
 
 	eps := endpointsFromFlag(cmd)
-	c := newClient(eps, dialTimeout)
+	c := newClient(eps, dialTimeout.Dur())
 	ctx := context.Background()
 
 	for {
