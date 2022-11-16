@@ -59,7 +59,7 @@ func runElectionFunc(cmd *cobra.Command, args []string) {
 			rcNextc = nextc
 		}
 
-		rcs[i].c = newClient(eps, dialTimeout)
+		rcs[i].c = newClient(eps, dialTimeout.Dur())
 		var (
 			s   *concurrency.Session
 			err error

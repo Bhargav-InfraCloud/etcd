@@ -21,7 +21,8 @@ import (
 	"sync"
 	"time"
 
-	"go.etcd.io/etcd/client/v3"
+	"go.etcd.io/etcd/client/pkg/v3/flagutil"
+	clientv3 "go.etcd.io/etcd/client/v3"
 
 	"github.com/spf13/cobra"
 	"golang.org/x/time/rate"
@@ -31,7 +32,7 @@ import (
 var (
 	totalClientConnections int // total number of client connections to be made with server
 	endpoints              []string
-	dialTimeout            time.Duration
+	dialTimeout            flagutil.Duration
 	rounds                 int // total number of rounds to run; set to <= 0 to run forever.
 	reqRate                int // maximum number of requests per second.
 )
