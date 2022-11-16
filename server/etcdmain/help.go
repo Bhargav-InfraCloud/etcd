@@ -1,5 +1,4 @@
 // Copyright 2015 The etcd Authors
-// Copyright 2015 The etcd Authors
 //
 // Licensed under the Apache License, Version 2.0 (the "License");
 // you may not use this file except in compliance with the License.
@@ -19,6 +18,7 @@ import (
 	"fmt"
 	"strconv"
 
+	"go.etcd.io/etcd/client/pkg/v3/flagutil"
 	cconfig "go.etcd.io/etcd/server/v3/config"
 	"go.etcd.io/etcd/server/v3/embed"
 	"golang.org/x/crypto/bcrypt"
@@ -73,8 +73,8 @@ Member:
     Raise alarms when backend size exceeds the given quota (0 defaults to low space quota).
   --backend-bbolt-freelist-type 'map'
     BackendFreelistType specifies the type of freelist that boltdb backend uses(array and map are supported types).
-  --backend-batch-interval ''
-    BackendBatchInterval is the maximum time before commit the backend transaction.
+  --backend-batch-interval '0s'
+    ` + flagutil.AddDefaultUnitsDesc(`BackendBatchInterval is the maximum time before commit the backend transaction.`) + `
   --backend-batch-limit '0'
     BackendBatchLimit is the maximum operations before commit the backend transaction.
   --max-txn-ops '128'
@@ -84,15 +84,21 @@ Member:
   --max-concurrent-streams 'math.MaxUint32'
     Maximum concurrent streams that each client can open at a time.
   --grpc-keepalive-min-time '5s'
-    Minimum duration interval that a client should wait before pinging server.
+    ` + flagutil.AddDefaultUnitsDesc(`Minimum interval duration that a client should wait before pinging server.`) + `
   --grpc-keepalive-interval '2h'
-    Frequency duration of server-to-client ping to check if a connection is alive (0 to disable).
+    ` + flagutil.AddDefaultUnitsDesc(`Frequency duration of server-to-client ping to check if a connection is alive (0 to disable).`) + `
   --grpc-keepalive-timeout '20s'
-    Additional duration of wait before closing a non-responsive connection (0 to disable).
+    ` + flagutil.AddDefaultUnitsDesc(`Additional duration of wait before closing a non-responsive connection (0 to disable).`) + `
   --socket-reuse-port 'false'
     Enable to set socket option SO_REUSEPORT on listeners allowing rebinding of a port already in use.
   --socket-reuse-address 'false'
 	Enable to set socket option SO_REUSEADDR on listeners allowing binding to an address in TIME_WAIT state.
+
+Raft Timeouts:
+  --raft-read-timeout '5s'
+    ` + flagutil.AddDefaultUnitsDesc(`Read timeout set on each rafthttp connection`) + `
+  --raft-write-timeout '5s'
+    ` + flagutil.AddDefaultUnitsDesc(`Write timeout set on each rafthttp connection`) + `
 
 Clustering:
   --initial-advertise-peer-urls 'http://localhost:2380'
@@ -114,13 +120,13 @@ Clustering:
   --discovery-endpoints ''
     V3 discovery: List of gRPC endpoints of the discovery service.
   --discovery-dial-timeout '2s'
-    V3 discovery: dial timeout for client connections.
+    ` + flagutil.AddDefaultUnitsDesc(`V3 discovery: dial timeout for client connections.`) + `
   --discovery-request-timeout '5s'
-    V3 discovery: timeout for discovery requests (excluding dial timeout).
+    ` + flagutil.AddDefaultUnitsDesc(`V3 discovery: timeout for discovery requests (excluding dial timeout).`) + `
   --discovery-keepalive-time '2s'
-    V3 discovery: keepalive time for client connections.
+    ` + flagutil.AddDefaultUnitsDesc(`V3 discovery: keepalive time for client connections.`) + `
   --discovery-keepalive-timeout '6s'
-    V3 discovery: keepalive timeout for client connections.
+    ` + flagutil.AddDefaultUnitsDesc(`V3 discovery: keepalive timeout for client connections.`) + `
   --discovery-insecure-transport 'true'
     V3 discovery: disable transport security for client connections.
   --discovery-insecure-skip-tls-verify 'false'
@@ -245,27 +251,33 @@ Experimental feature:
   --experimental-initial-corrupt-check 'false'
     Enable to check data corruption before serving any client/peer traffic.
   --experimental-corrupt-check-time '0s'
-    Duration of time between cluster corruption check passes.
+    ` + flagutil.AddDefaultUnitsDesc(`Duration of time between cluster corruption check passes.`) + `
+  --experimental-compact-hash-check-time '1m'
+    ` + flagutil.AddDefaultUnitsDesc(`Duration of time between leader checks followers compaction hashes.`) + `
   --experimental-enable-lease-checkpoint 'false'
     ExperimentalEnableLeaseCheckpoint enables primary lessor to persist lease remainingTTL to prevent indefinite auto-renewal of long lived leases.
   --experimental-compaction-batch-limit 1000
     ExperimentalCompactionBatchLimit sets the maximum revisions deleted in each compaction batch.
+  --experimental-compaction-sleep-interval '0s'
+    ` + flagutil.AddDefaultUnitsDesc(`Sets the sleep interval between each compaction batch.`) + `
   --experimental-peer-skip-client-san-verification 'false'
     Skip verification of SAN field in client certificate for peer connections.
   --experimental-watch-progress-notify-interval '10m'
-    Duration of periodical watch progress notification.
+    ` + flagutil.AddDefaultUnitsDesc(`Duration of periodic watch progress notifications.`) + `
+  --experimental-downgrade-check-time '5s'
+    ` + flagutil.AddDefaultUnitsDesc(`Duration of time between two downgrade status check.`) + `
   --experimental-warning-apply-duration '100ms'
-    Warning is generated if requests take more than this duration.
+    ` + flagutil.AddDefaultUnitsDesc(`Time duration after which a warning is generated if request takes more time.`) + `
   --experimental-txn-mode-write-with-shared-buffer 'true'
     Enable the write transaction to use a shared buffer in its readonly check operations.
   --experimental-bootstrap-defrag-threshold-megabytes
     Enable the defrag during etcd server bootstrap on condition that it will free at least the provided threshold of disk space. Needs to be set to non-zero value to take effect.
   --experimental-warning-unary-request-duration '300ms'
-    Set time duration after which a warning is generated if a unary request takes more than this duration.
+    ` + flagutil.AddDefaultUnitsDesc(`Time duration after which a warning is generated if a unary request takes more time.`) + `
   --experimental-max-learners '1'
     Set the max number of learner members allowed in the cluster membership.
   --experimental-wait-cluster-ready-timeout '5s'
-    Set the maximum time duration to wait for the cluster to be ready.
+    ` + flagutil.AddDefaultUnitsDesc(`Maximum duration to wait for the cluster to be ready.`) + `
 
 Unsafe feature:
   --force-new-cluster 'false'

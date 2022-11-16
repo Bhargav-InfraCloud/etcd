@@ -30,6 +30,7 @@ import (
 	"time"
 
 	pb "go.etcd.io/etcd/api/v3/etcdserverpb"
+	"go.etcd.io/etcd/client/pkg/v3/flagutil"
 	"go.etcd.io/etcd/client/pkg/v3/logutil"
 	"go.etcd.io/etcd/client/pkg/v3/tlsutil"
 	"go.etcd.io/etcd/client/pkg/v3/transport"
@@ -61,7 +62,7 @@ var (
 	grpcProxyListenAddr                string
 	grpcProxyMetricsListenAddr         string
 	grpcProxyEndpoints                 []string
-	grpcProxyEndpointsAutoSyncInterval time.Duration
+	grpcProxyEndpointsAutoSyncInterval flagutil.Duration
 	grpcProxyDNSCluster                string
 	grpcProxyDNSClusterServiceName     string
 	grpcProxyInsecureDiscovery         bool
@@ -100,9 +101,9 @@ var (
 	grpcProxyDebug bool
 
 	// GRPC keep alive related options.
-	grpcKeepAliveMinTime  time.Duration
-	grpcKeepAliveTimeout  time.Duration
-	grpcKeepAliveInterval time.Duration
+	grpcKeepAliveMinTime  flagutil.Duration
+	grpcKeepAliveTimeout  flagutil.Duration
+	grpcKeepAliveInterval flagutil.Duration
 
 	maxConcurrentStreams uint32
 )
@@ -137,7 +138,6 @@ func newGRPCProxyStartCommand() *cobra.Command {
 	cmd.Flags().StringVar(&grpcProxyMetricsListenAddr, "metrics-addr", "", "listen for endpoint /metrics requests on an additional interface")
 	cmd.Flags().BoolVar(&grpcProxyInsecureDiscovery, "insecure-discovery", false, "accept insecure SRV records")
 	cmd.Flags().StringSliceVar(&grpcProxyEndpoints, "endpoints", []string{"127.0.0.1:2379"}, "comma separated etcd cluster endpoints")
-	cmd.Flags().DurationVar(&grpcProxyEndpointsAutoSyncInterval, "endpoints-auto-sync-interval", 0, "etcd endpoints auto sync interval (disabled by default)")
 	cmd.Flags().StringVar(&grpcProxyAdvertiseClientURL, "advertise-client-url", "127.0.0.1:23790", "advertise address to register (must be reachable by client)")
 	cmd.Flags().StringVar(&grpcProxyResolverPrefix, "resolver-prefix", "", "prefix to use for registering proxy (must be shared with other grpc-proxy members)")
 	cmd.Flags().IntVar(&grpcProxyResolverTTL, "resolver-ttl", 0, "specify TTL, in seconds, when registering proxy endpoints")
@@ -146,9 +146,19 @@ func newGRPCProxyStartCommand() *cobra.Command {
 	cmd.Flags().StringVar(&grpcProxyDataDir, "data-dir", "default.proxy", "Data directory for persistent data")
 	cmd.Flags().IntVar(&grpcMaxCallSendMsgSize, "max-send-bytes", defaultGRPCMaxCallSendMsgSize, "message send limits in bytes (default value is 1.5 MiB)")
 	cmd.Flags().IntVar(&grpcMaxCallRecvMsgSize, "max-recv-bytes", math.MaxInt32, "message receive limits in bytes (default value is math.MaxInt32)")
-	cmd.Flags().DurationVar(&grpcKeepAliveMinTime, "grpc-keepalive-min-time", embed.DefaultGRPCKeepAliveMinTime, "Minimum interval duration that a client should wait before pinging proxy.")
-	cmd.Flags().DurationVar(&grpcKeepAliveInterval, "grpc-keepalive-interval", embed.DefaultGRPCKeepAliveInterval, "Frequency duration of server-to-client ping to check if a connection is alive (0 to disable).")
-	cmd.Flags().DurationVar(&grpcKeepAliveTimeout, "grpc-keepalive-timeout", embed.DefaultGRPCKeepAliveTimeout, "Additional duration of wait before closing a non-responsive connection (0 to disable).")
+
+	// flagutil.DurationFlag acts like a wrapper over pflag.(*FlagSet).DurationVar,
+	// which lets to input integer values for duration-based input flags.
+	// Input formats now: 2, 2ns, 2us (for µs), 2ms, 2s, 2m, 2h
+	// Default unit is seconds. i.e., --flagname=2 and --flagname=2s gives the same result.
+	cmd.Flags().AddFlag(flagutil.DurationFlag(&grpcProxyEndpointsAutoSyncInterval, "endpoints-auto-sync-interval", flagutil.ToDuration(0),
+		"etcd endpoints auto sync interval (disabled by default)", true))
+	cmd.Flags().AddFlag(flagutil.DurationFlag(&grpcKeepAliveMinTime, "grpc-keepalive-min-time", flagutil.ToDuration(embed.DefaultGRPCKeepAliveMinTime),
+		"Minimum interval duration that a client should wait before pinging proxy.", true))
+	cmd.Flags().AddFlag(flagutil.DurationFlag(&grpcKeepAliveInterval, "grpc-keepalive-interval", flagutil.ToDuration(embed.DefaultGRPCKeepAliveInterval),
+		"Frequency duration of server-to-client ping to check if a connection is alive (0 to disable).", true))
+	cmd.Flags().AddFlag(flagutil.DurationFlag(&grpcKeepAliveTimeout, "grpc-keepalive-timeout", flagutil.ToDuration(embed.DefaultGRPCKeepAliveTimeout),
+		"Additional duration of wait before closing a non-responsive connection (0 to disable).", true))
 
 	// client TLS for connecting to server
 	cmd.Flags().StringVar(&grpcProxyCert, "cert", "", "identify secure connections with etcd servers using this TLS certificate file")
@@ -224,6 +234,14 @@ func startGRPCProxy(cmd *cobra.Command, args []string) {
 	}()
 
 	client := mustNewClient(lg)
+
+	lg.Debug(
+		"input flag configs",
+		zap.Stringer("endpoints-auto-sync-interval", grpcProxyEndpointsAutoSyncInterval),
+		zap.Stringer("grpc-keepalive-min-time", grpcKeepAliveMinTime),
+		zap.Stringer("grpc-keepalive-interval", grpcKeepAliveInterval),
+		zap.Stringer("grpc-keepalive-timeout", grpcKeepAliveTimeout),
+	)
 
 	// The proxy client is used for self-healthchecking.
 	// TODO: The mechanism should be refactored to use internal connection.
@@ -351,7 +369,7 @@ func newClientCfg(lg *zap.Logger, eps []string) (*clientv3.Config, error) {
 	// set tls if any one tls option set
 	cfg := clientv3.Config{
 		Endpoints:        eps,
-		AutoSyncInterval: grpcProxyEndpointsAutoSyncInterval,
+		AutoSyncInterval: grpcProxyEndpointsAutoSyncInterval.Dur(),
 		DialTimeout:      5 * time.Second,
 	}
 
@@ -476,17 +494,18 @@ func newGRPCProxyServer(lg *zap.Logger, client *clientv3.Client) *grpc.Server {
 		)),
 		grpc.MaxConcurrentStreams(math.MaxUint32),
 	}
-	if grpcKeepAliveMinTime > time.Duration(0) {
+
+	if grpcKeepAliveMinTime.Dur() > time.Duration(0) {
 		gopts = append(gopts, grpc.KeepaliveEnforcementPolicy(keepalive.EnforcementPolicy{
-			MinTime:             grpcKeepAliveMinTime,
+			MinTime:             grpcKeepAliveMinTime.Dur(),
 			PermitWithoutStream: false,
 		}))
 	}
-	if grpcKeepAliveInterval > time.Duration(0) ||
-		grpcKeepAliveTimeout > time.Duration(0) {
+	if grpcKeepAliveInterval.Dur() > time.Duration(0) ||
+		grpcKeepAliveTimeout.Dur() > time.Duration(0) {
 		gopts = append(gopts, grpc.KeepaliveParams(keepalive.ServerParameters{
-			Time:    grpcKeepAliveInterval,
-			Timeout: grpcKeepAliveTimeout,
+			Time:    grpcKeepAliveInterval.Dur(),
+			Timeout: grpcKeepAliveTimeout.Dur(),
 		}))
 	}
 
