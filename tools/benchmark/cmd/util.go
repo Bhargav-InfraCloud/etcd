@@ -94,9 +94,9 @@ func mustCreateConn() *clientv3.Client {
 		dialTotal++
 	}
 	cfg := clientv3.Config{
-		AutoSyncInterval: autoSyncInterval,
+		AutoSyncInterval: autoSyncInterval.Dur(),
 		Endpoints:        connEndpoints,
-		DialTimeout:      dialTimeout,
+		DialTimeout:      dialTimeout.Dur(),
 	}
 	if !tls.Empty() || tls.TrustedCAFile != "" {
 		cfgtls, err := tls.ClientConfig()
