@@ -1,6 +1,6 @@
 .PHONY: build
 build:
-	GO_BUILD_FLAGS="-v" ./scripts/build.sh
+	GO_BUILD_FLAGS="${GO_BUILD_FLAGS} -v" ./scripts/build.sh
 	./bin/etcd --version
 	./bin/etcdctl version
 	./bin/etcdutl version
@@ -41,7 +41,7 @@ fuzz:
 
 verify: verify-gofmt verify-bom verify-lint verify-dep verify-shellcheck verify-goword \
 	verify-govet verify-license-header verify-receiver-name verify-mod-tidy verify-shellcheck \
-	verify-shellws verify-proto-annotations verify-genproto
+	verify-shellws verify-proto-annotations verify-genproto verify-go-build-flags-from-env
 fix: fix-bom fix-lint
 	./scripts/fix.sh
 
@@ -104,6 +104,11 @@ verify-proto-annotations:
 .PHONY: verify-genproto
 verify-genproto:
 	PASSES="genproto" ./scripts/test.sh
+
+.PHONY: verify-go-build-flags-from-env
+verify-go-build-flags-from-env:
+	PASSES="go_build_flags_from_env" ./scripts/test.sh
+	PASSES="go_build_flags_from_env_with_args" ./scripts/test.sh
 
 # Failpoints
 

@@ -678,6 +678,14 @@ function genproto_pass {
   "${ETCD_ROOT_DIR}/scripts/verify_genproto.sh"
 }
 
+function go_build_flags_from_env_pass {
+  "${ETCD_ROOT_DIR}/scripts/build-test.sh" "test_makefile_read_build_flags_from_env"
+}
+
+function go_build_flags_from_env_with_args_pass {
+  "${ETCD_ROOT_DIR}/scripts/build-test.sh" "test_makefile_read_build_flags_from_env_with_args"
+}
+
 ########### MAIN ###############################################################
 
 function run_pass {

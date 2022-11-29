@@ -57,6 +57,8 @@ Setup environment:
   - For ubuntu and debian run `sudo apt-get install build-essentials`
 - Verify that everything is installed by running `make build`
 
+Note: In `make build`, the verbosity (`-v` flag) is enabled by default. Any additional go build flags, if required, should be added to env `GO_BUILD_FLAGS` before running `make build`.
+
 [file an issue]: https://github.com/etcd-io/etcd/issues/new/choose
 
 ## Implement your change

@@ -7,22 +7,35 @@ jobs:
       fail-fast: false
       matrix:
         target:
-        - linux-amd64-integration-1-cpu
-        - linux-amd64-integration-2-cpu
-        - linux-amd64-integration-4-cpu
-        - linux-amd64-unit-4-cpu-race
-        - linux-386-unit-1-cpu
+        - name: linux-amd64-integration-1-cpu
+          upload-artifact: true
+        - name: linux-amd64-integration-2-cpu
+          upload-artifact: true
+        - name: linux-amd64-integration-4-cpu
+          upload-artifact: true
+        - name: linux-amd64-unit-4-cpu-race
+          upload-artifact: true
+        - name: linux-386-unit-1-cpu
+          upload-artifact: true
+        - name: default-arch-build-flags-from-env
+          upload-artifact: false
     steps:
     - uses: actions/checkout@v2
     - uses: actions/setup-go@v2
       with:
         go-version: "1.19.3"
     - run: date
-    - env:
-        TARGET: ${{ matrix.target }}
+    - name: Setup workspace
+      env:
+        TARGET: ${{ matrix.target.name }}
+      if: ${{ matrix.target.upload-artifact }}
       run: |
         mkdir "${TARGET}"
-        export JUNIT_REPORT_DIR=$(realpath ${TARGET})
+        echo "JUNIT_REPORT_DIR=$(realpath ${TARGET})" >> $GITHUB_ENV
+    - name: Test
+      env:
+        TARGET: ${{ matrix.target.name }}
+      run: |
         case "${TARGET}" in
           linux-amd64-integration-1-cpu)
             GOARCH=amd64 CPU=1 PASSES='integration' RACE='false' ./scripts/test.sh
@@ -39,12 +52,16 @@ jobs:
           linux-386-unit-1-cpu)
             GOARCH=386 PASSES='unit' RACE='false' CPU='1' ./scripts/test.sh -p=4
             ;;
+          default-arch-build-flags-from-env)
+            PASSES="go_build_flags_from_env" ./scripts/test.sh
+            PASSES="go_build_flags_from_env_with_args" ./scripts/test.sh
+            ;;
           *)
             echo "Failed to find target"
             exit 1
             ;;
         esac
     - uses: actions/upload-artifact@v2
-      if: always()
+      if: ${{ matrix.target.upload-artifact }}
       with:
         path: ./**/junit_*.xml
