@@ -1,5 +1,7 @@
 #!/usr/bin/env bash
 
+source ./scripts/test_lib.sh
+
 # Test to check whether "make build" reads and prepends build flags from env GO_BUILD_FLAGS
 function test_makefile_read_build_flags_from_env {
     # 3 occurrences, one for each: etcd, etcdctl, etcdutl 
@@ -16,13 +18,12 @@ function test_makefile_read_build_flags_from_env {
 
     if [ "$count" -ne "$occurrences" ]; then
         # Failure case: Number of occurrences doesn't match with expected
-        printf "Error: Build flags from env GO_BUILD_FLAGS not found in one or more logs"
-        echo " (matches expected: ${occurrences}, got: ${count})"
+        log_error "Error: Build flags from env GO_BUILD_FLAGS not found in one or more logs (matches expected: ${occurrences}, got: ${count})"
 
         return 255
     fi
 
-    echo "SUCCESS: Build flags from env GO_BUILD_FLAGS read successfully"
+    log_success "SUCCESS: Build flags from env GO_BUILD_FLAGS read successfully"
     return 0
 }
 
@@ -32,7 +33,6 @@ function test_makefile_read_build_flags_from_env_with_args {
     # Build command on output should print flags -tags (from env GO_BUILD_FLAGS) and -v (from Makefile)
     local occurrences=3
 
-    # Build flag -tags without arguments is same as default build, handy for testing
     local extra_flag="-tags"
     local arg1='linux'
 
@@ -43,13 +43,12 @@ function test_makefile_read_build_flags_from_env_with_args {
 
     if [ "$count" -ne "$occurrences" ]; then
         # Failure case: Number of occurrences doesn't match with expected
-        printf "Error: Build flags with args from env GO_BUILD_FLAGS not found in one or more logs"
-        echo " (matches expected: ${occurrences}, got: ${count})"
+        log_error "Error: Build flags with args from env GO_BUILD_FLAGS not found in one or more logs (matches expected: ${occurrences}, got: ${count})"
 
         return 255
     fi
 
-    echo "SUCCESS: Build flags with args from env GO_BUILD_FLAGS read successfully"
+    log_success "SUCCESS: Build flags with args from env GO_BUILD_FLAGS read successfully"
     return 0
 }
 
